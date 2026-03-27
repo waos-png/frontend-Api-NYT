@@ -1,0 +1,273 @@
+<div class="container page-shell">
+  <section class="hero-panel mb-4">
+    <div class="hero-copy">
+      <div class="eyebrow">NYT Books API</div>
+      <h1>Explorador editorial para listas, reseñas e historial literario</h1>
+      <p class="subtitle">Una interfaz única para contrastar categorías, revisar resultados históricos y presentar libros con una composición más cuidada.</p>
+      <div class="hero-actions">
+        <span class="hero-chip">7 consultas disponibles</span>
+        <span class="hero-chip hero-chip-muted">Portadas con fallback</span>
+        <span class="hero-chip hero-chip-muted">Manejo de errores en UI</span>
+        <span class="hero-chip" [class.hero-chip-muted]="isOnline">{{ isOnline ? 'En línea' : 'Sin conexión' }}</span>
+      </div>
+    </div>
+
+    <div class="hero-metrics">
+      <div class="metric-card">
+        <span class="metric-label">Consultas activas</span>
+        <strong>{{ queryTypes.length }}</strong>
+        <span class="metric-detail">Incluye acceso rápido a la lista Advice</span>
+      </div>
+      <div class="metric-card">
+        <span class="metric-label">Endpoints NYT</span>
+        <strong>{{ supportedEndpoints }}</strong>
+        <span class="metric-detail">Cubiertos entre backend y frontend</span>
+      </div>
+      <div class="metric-card accent">
+        <span class="metric-label">Vista actual</span>
+        <strong>{{ getCurrentQueryLabel() }}</strong>
+        <span class="metric-detail">{{ queryHelp[queryType].help }}</span>
+      </div>
+    </div>
+  </section>
+
+  <section class="workspace-grid">
+    <div class="main-column">
+      <div class="card mb-4 p-4 query-card">
+        <div class="query-head">
+          <div>
+            <div class="eyebrow">Consulta</div>
+            <h2 class="query-title">Elige una consulta y completa los filtros</h2>
+            <p class="query-help">Cada opción consulta una sección distinta de la NYT Books API y ajusta los parámetros según lo que necesites buscar.</p>
+          </div>
+          <div class="query-summary">
+            <span class="summary-label">Consulta activa</span>
+            <strong>{{ getCurrentQueryLabel() }}</strong>
+          </div>
+        </div>
+        <form (ngSubmit)="search()">
+          <div class="row g-3 align-items-end">
+            <div class="col-lg-5">
+              <label for="queryType" class="form-label">Consulta</label>
+              <select id="queryType" class="form-select" [(ngModel)]="queryType" name="queryType" (change)="search()">
+                <option *ngFor="let option of queryTypes" [ngValue]="option.value">{{ option.label }}</option>
+              </select>
+              <div class="form-text">Cambia la consulta para ver los campos requeridos.</div>
+              <div class="query-hints">
+                <span class="hint">{{ queryHelp[queryType].help }}</span>
+                <span class="hint example">{{ queryHelp[queryType].example }}</span>
+              </div>
+            </div>
+
+            <div *ngIf="queryType === 'listCurrent' || queryType === 'listByDate'" class="col-lg-4">
+              <label class="form-label">Nombre de lista</label>
+              <input class="form-control" [(ngModel)]="listName" name="listName" placeholder="hardcover-fiction" />
+              <div class="form-text">Usa un valor de la lista disponible.</div>
+            </div>
+
+            <div *ngIf="queryType === 'listByDate'" class="col-lg-3">
+              <label class="form-label">Fecha (YYYY-MM-DD)</label>
+              <input type="date" class="form-control" [(ngModel)]="date" name="date" />
+            </div>
+
+            <div *ngIf="queryType === 'overview'" class="col-lg-3">
+              <label class="form-label">Fecha de publicacion (opcional)</label>
+              <input type="date" class="form-control" [(ngModel)]="publishedDate" name="publishedDate" />
+              <div class="form-text">Si se deja vacio, NYT usa la fecha actual.</div>
+            </div>
+
+            <div *ngIf="queryType === 'reviews' || queryType === 'history'" class="col-lg-3">
+              <label class="form-label">Titulo</label>
+              <input class="form-control" [(ngModel)]="title" name="title" placeholder="Ej: The Midnight Library" />
+            </div>
+
+            <div *ngIf="queryType === 'reviews' || queryType === 'history'" class="col-lg-3">
+              <label class="form-label">Autor</label>
+              <input class="form-control" [(ngModel)]="author" name="author" placeholder="Ej: Colleen Hoover" />
+            </div>
+
+            <div *ngIf="queryType === 'reviews' || queryType === 'history'" class="col-lg-3">
+              <label class="form-label">ISBN</label>
+              <input class="form-control" [(ngModel)]="isbn" name="isbn" placeholder="9780316769488" />
+            </div>
+
+            <div *ngIf="queryType === 'history'" class="col-lg-3">
+              <label class="form-label">Editorial</label>
+              <input class="form-control" [(ngModel)]="publisher" name="publisher" placeholder="Random House" />
+            </div>
+
+            <div *ngIf="queryType === 'history'" class="col-lg-2">
+              <label class="form-label">Desplazamiento</label>
+              <input type="number" class="form-control" [(ngModel)]="offset" name="offset" placeholder="0" min="0" step="20" />
+            </div>
+
+            <div class="col-lg-2">
+              <button type="submit" class="btn btn-primary w-100">Buscar</button>
+            </div>
+          </div>
+        </form>
+      </div>
+
+      <div *ngIf="!isOnline" class="alert alert-warning" role="alert">
+        Estás sin conexión. La app seguirá mostrando los recursos en caché y las consultas que ya hayas cargado antes.
+      </div>
+
+      <div *ngIf="loading" class="loading-panel mb-4">
+        <div class="spinner-border" role="status">
+          <span class="visually-hidden">Cargando...</span>
+        </div>
+        <p>Cargando datos...</p>
+      </div>
+
+      <div *ngIf="error" class="alert alert-danger alert-dismissible fade show" role="alert">
+        {{ error }}
+        <button type="button" class="btn-close" (click)="error = ''"></button>
+      </div>
+
+      <div *ngIf="getActiveFilters().length" class="filter-bar mb-3">
+        <span class="filter-title">Filtros activos</span>
+        <span class="filter-chip" *ngFor="let f of getActiveFilters()">
+          <strong>{{ f.label }}:</strong> {{ f.value }}
+        </span>
+      </div>
+
+      <div *ngIf="listNames?.length" class="mb-4">
+        <div class="section-header">
+          <h5>Listas disponibles</h5>
+          <span class="pill">Total: {{ listNames.length }}</span>
+        </div>
+        <div class="names-grid">
+          <div class="name-item" *ngFor="let name of listNames">{{ name }}</div>
+        </div>
+      </div>
+
+      <div *ngIf="books?.length" class="row g-4">
+        <div *ngFor="let book of books" class="col-md-6 col-xl-4">
+          <div class="book-card" (click)="selectBook(book)">
+            <div class="book-image">
+              <img [src]="getImage(book)" [alt]="book.title" />
+            </div>
+            <div class="book-info">
+              <span class="book-kicker">Seleccion NYT</span>
+              <h5>{{ book.title }}</h5>
+              <p class="author">{{ book.author }}</p>
+              <p class="book-desc">{{ book.description || 'Sin descripcion disponible.' }}</p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div *ngIf="overviewLists?.length" class="mb-4">
+        <div class="section-header">
+          <h5>Resumen</h5>
+          <span class="pill">Listas: {{ overviewLists.length }}</span>
+        </div>
+        <div class="row g-3">
+          <div class="col-12" *ngFor="let list of overviewLists">
+            <div class="card overview-card p-3">
+              <div class="list-head">
+                <div>
+                  <div class="fw-bold">{{ list.display_name || list.list_name_encoded }}</div>
+                  <div class="text-muted small">{{ list.list_name_encoded }}</div>
+                </div>
+                <span class="pill pill-accent">{{ (list.books || []).length }} libros</span>
+              </div>
+
+              <div class="row g-3 mt-1">
+                <div class="col-6 col-md-4 col-lg-3" *ngFor="let b of (list.books || []).slice(0, 8)">
+                  <div class="book-card mini" style="cursor: default;" (click)="$event.stopPropagation()">
+                    <div class="book-image">
+                      <img [src]="getAnyImage(b.book_image)" [alt]="b.title" />
+                    </div>
+                    <div class="book-info">
+                      <span class="book-kicker">Overview</span>
+                      <h5>{{ b.title }}</h5>
+                      <p class="author">{{ b.author }}</p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div *ngIf="reviews?.length" class="mb-4">
+        <div class="section-header">
+          <h5>Reseñas</h5>
+          <span class="pill">Resultados: {{ reviews.length }}</span>
+        </div>
+        <div class="row g-3">
+          <div class="col-12 col-md-6" *ngFor="let r of reviews">
+            <div class="card p-3 h-100 review-card">
+              <div class="review-top">
+                <div class="review-title">{{ r.book_title || '(sin titulo)' }}</div>
+                <span class="pill pill-muted" *ngIf="r.isbn13">ISBN13 {{ r.isbn13 }}</span>
+              </div>
+              <div class="review-author">{{ r.book_author || '(sin autor)' }}</div>
+              <p class="review-summary">{{ r.summary || '(sin resumen)' }}</p>
+              <div class="review-actions">
+                <a *ngIf="r.url" class="btn btn-outline-primary btn-sm" [href]="r.url" target="_blank" rel="noreferrer">Ver en NYT</a>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div *ngIf="historyItems?.length" class="mb-4">
+        <div class="section-header">
+          <h5>Historial</h5>
+          <span class="pill">Resultados: {{ historyItems.length }}</span>
+        </div>
+        <div class="row g-3">
+          <div class="col-12 col-md-6" *ngFor="let h of historyItems">
+            <div class="card p-3 h-100 history-card">
+              <div class="history-title">{{ h.title || '(sin titulo)' }}</div>
+              <div class="history-meta">
+                <span>{{ h.author || '(sin autor)' }}</span>
+                <span *ngIf="h.publisher">Editorial: {{ h.publisher }}</span>
+              </div>
+              <p class="history-desc">{{ h.description || '(sin descripcion)' }}</p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div *ngIf="!loading && !error && !books?.length && !listNames?.length && !overviewLists?.length && !reviews?.length && !historyItems?.length" class="empty-state mt-4">
+        <h3>Sin resultados</h3>
+        <p>Ajusta los filtros o prueba otra consulta para seguir explorando.</p>
+      </div>
+    </div>
+
+    <aside class="side-column">
+      <div class="card side-panel">
+        <div class="eyebrow">Sugerencias</div>
+        <h3>Ideas para explorar mejor</h3>
+        <ul class="side-list">
+          <li>Empieza por <strong>Listas disponibles</strong> para obtener categorías válidas.</li>
+          <li>Usa <strong>Lista por fecha</strong> si quieres revisar resultados de un momento específico.</li>
+          <li>Combina <strong>Reseñas</strong> e <strong>Historial</strong> para tener más contexto sobre un libro o autor.</li>
+        </ul>
+      </div>
+
+    </aside>
+  </section>
+
+  <div class="modal" *ngIf="selectedBook" (click)="closeDetail()">
+    <div class="modal-content" (click)="$event.stopPropagation()">
+      <button class="close-btn" (click)="closeDetail()">X</button>
+      <div class="detail-container">
+        <div class="detail-image">
+          <img [src]="getImage(selectedBook)" [alt]="selectedBook.title" />
+        </div>
+        <div class="detail-body">
+          <h2>{{ selectedBook.title }}</h2>
+          <p class="author-detail"><strong>Autor:</strong> {{ selectedBook.author }}</p>
+          <p class="publisher-detail"><strong>Editorial:</strong> {{ selectedBook.publisher }}</p>
+          <p class="description-detail">{{ selectedBook.description }}</p>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
